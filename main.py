@@ -4,7 +4,10 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 from functions.get_files_info import schema_get_files_info
-
+from functions.get_file_content import schema_get_file_content
+from functions.run_python_file import schema_run_python_file
+from functions.write_file import schema_write_file
+from functions.call_function import call_function
 
 load_dotenv()
 api_key = os.environ.get("GEMINI_API_KEY")
@@ -15,6 +18,9 @@ def main():
     available_functions = types.Tool(
         function_declarations=[
             schema_get_files_info,
+            schema_get_file_content,
+            schema_run_python_file,
+            schema_write_file,
         ]
     )
     system_prompt = """
@@ -23,6 +29,9 @@ def main():
     When a user asks a question or makes a request, make a function call plan. You can perform the following operations:
 
     - List files and directories
+    - Read file content
+    - Execute Python files with optional arguments
+    - Write or overwrite files
 
     All paths you provide should be relative to the working directory. You do not need to specify the working directory in your function calls as it is automatically injected for security reasons.
     """
@@ -46,7 +55,25 @@ def main():
         print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
     if response.function_calls:
         for fc in response.function_calls:
-            print(f"Calling function: {fc.name}({fc.args})")
+            function_call_result = call_function(fc, verbose)
+
+            if not hasattr(function_call_result, 'parts'):
+                raise Exception("function_call_result is missing 'parts'")
+
+            if not function_call_result.parts or len(function_call_result.parts) == 0:
+                raise Exception("function_call_result.parts is empty")
+
+            first_part = function_call_result.parts[0]
+            if not hasattr(first_part, 'function_response'):
+                raise Exception("first_part is missing 'function_response'")
+
+            function_response_obj = first_part.function_response
+            if not hasattr(function_response_obj, 'response'):
+                raise Exception("function_response_obj is missing 'response'")
+
+            if verbose:
+                print(f"-> {function_call_result.parts[0].function_response.response}")
+
     else:
         print(response.text) 
 if __name__ == "__main__":
